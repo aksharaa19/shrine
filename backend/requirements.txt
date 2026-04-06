@@ -8,3 +8,4 @@ vaderSentiment==3.3.2
 prometheus-client==0.18.0
 python-json-logger==2.0.7
 redis==5.0.1
+setuptools==65.5.0
