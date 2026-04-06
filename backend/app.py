@@ -1,6 +1,5 @@
 import sys
 import os
-import logging
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -13,10 +12,8 @@ from mining.sliding_window import SlidingWindowAnalyzer
 from live_stream_monitor import LiveStreamMonitor
 from reports.report_generator import ReportGenerator
 from auth import UserAuth
-from visualization.charts import ChartDataGenerator
-from database import db_manager
-from oauth2 import oauth2
-from monitoring import monitor_metrics, ACTIVE_MONITORS, TOXICITY_SCORE, ATTACK_SCORE, COMMENT_COUNT
+from sentiment.analyzer import SentimentAnalyzer
+from monitoring import monitor_metrics, ACTIVE_MONITORS, TOXICITY_SCORE, ATTACK_SCORE
 from logging_config import logger
 
 load_dotenv()
@@ -26,16 +23,13 @@ CORS(app)
 
 youtube = YouTubeClient()
 
-from sentiment.analyzer import ToxicBERTAnalyzer
-
 print("Initializing Sentiment Analyzer...")
-sentiment_analyzer = ToxicBERTAnalyzer()
+sentiment_analyzer = SentimentAnalyzer()
 print("Sentiment Analyzer ready")
 
 active_monitors = {}
 report_generator = ReportGenerator()
 user_auth = UserAuth()
-chart_generator = ChartDataGenerator()
 
 @app.before_request
 def log_request():
@@ -63,17 +57,10 @@ def serve_static(path):
 
 @app.route('/api/health')
 def health_check():
-    try:
-        db_manager.execute_query("SELECT 1", fetch_one=True)
-        db_status = "healthy"
-    except Exception as e:
-        db_status = f"unhealthy: {str(e)}"
-    
     return jsonify({
         'status': 'healthy',
-        'database': db_status,
         'active_monitors': len(active_monitors),
-        'environment': os.environ.get('GAE_ENV', 'development'),
+        'environment': os.environ.get('RENDER', 'development'),
         'timestamp': datetime.now().isoformat()
     })
 
@@ -125,7 +112,6 @@ def analyze_comments():
     stats = sentiment_analyzer.get_summary_stats(analyzed_comments)
     
     for comment in analyzed_comments:
-        COMMENT_COUNT.labels(video_id='posted_video').inc()
         TOXICITY_SCORE.labels(video_id='posted_video').set(comment['toxicity']['toxic_score'])
     
     return jsonify({'stats': stats, 'analyzed_comments': analyzed_comments})
@@ -291,45 +277,6 @@ def logout():
     result = user_auth.logout(data.get('token'))
     return jsonify(result)
 
-@app.route('/api/auth/google', methods=['POST'])
-@monitor_metrics
-def google_auth():
-    data = request.json
-    token = data.get('id_token')
-    
-    user_info = oauth2.verify_google_token(token)
-    if not user_info:
-        return jsonify({'error': 'Invalid Google token'}), 401
-    
-    result = db_manager.execute_query(
-        "SELECT * FROM users WHERE email = %s",
-        (user_info.get('email'),),
-        fetch_one=True
-    )
-    
-    if not result:
-        import hashlib
-        import secrets
-        temp_password = secrets.token_hex(16)
-        salt = secrets.token_hex(16)
-        password_hash = f"{salt}:{hashlib.sha256((temp_password + salt).encode()).hexdigest()}"
-        
-        result = db_manager.execute_query(
-            "INSERT INTO users (username, email, password_hash, role) VALUES (%s, %s, %s, %s) RETURNING id, username, email, role",
-            (user_info.get('name'), user_info.get('email'), password_hash, 'user'),
-            fetch_one=True
-        )
-    
-    jwt_token = oauth2.generate_jwt({
-        'id': result['id'],
-        'username': result['username'],
-        'email': result['email'],
-        'role': result['role']
-    })
-    
-    logger.info(f"Google user logged in", username=result['username'])
-    return jsonify({'token': jwt_token, 'user': result})
-
 @app.route('/api/history/save', methods=['POST'])
 @monitor_metrics
 def save_history():
@@ -349,47 +296,6 @@ def get_history():
         return jsonify({'error': 'Invalid session'}), 401
     history = user_auth.get_user_monitoring_history(session['username'])
     return jsonify({'history': history})
-
-@app.route('/api/charts/toxicity', methods=['POST'])
-@monitor_metrics
-def get_toxicity_chart():
-    data = request.json
-    video_id = data.get('video_id')
-    if video_id not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    chart_data = chart_generator.generate_toxicity_timeline(active_monitors[video_id].sliding_window)
-    return jsonify(chart_data)
-
-@app.route('/api/charts/attack', methods=['POST'])
-@monitor_metrics
-def get_attack_chart():
-    data = request.json
-    video_id = data.get('video_id')
-    if video_id not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    chart_data = chart_generator.generate_attack_timeline(active_monitors[video_id].sliding_window.attack_detector)
-    return jsonify(chart_data)
-
-@app.route('/api/charts/velocity', methods=['POST'])
-@monitor_metrics
-def get_velocity_chart():
-    data = request.json
-    video_id = data.get('video_id')
-    if video_id not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    chart_data = chart_generator.generate_velocity_chart(active_monitors[video_id].sliding_window)
-    return jsonify(chart_data)
-
-@app.route('/api/charts/gauge', methods=['POST'])
-@monitor_metrics
-def get_gauge_chart():
-    data = request.json
-    video_id = data.get('video_id')
-    if video_id not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    current_toxicity = active_monitors[video_id].sliding_window.get_window_average(30)
-    gauge_data = chart_generator.generate_gauge_data(current_toxicity)
-    return jsonify(gauge_data)
 
 @app.route('/metrics')
 def metrics():
