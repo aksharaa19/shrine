@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:15
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: shrine_db
+      POSTGRES_USER: shrine_user
+      POSTGRES_PASSWORD: shrine_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shrine_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/amd64
+    ports:
+      - "6379:6379"
+    networks:
+      - shrine_network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    platform: linux/amd64
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - shrine_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    platform: linux/amd64
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - shrine_network
+    restart: unless-stopped
+
+  app:
+    build: .
+    platform: linux/amd64
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_NAME: shrine_db
+      DB_USER: shrine_user
+      DB_PASSWORD: shrine_password
+      REDIS_URL: redis://redis:6379
+    command: gunicorn -b 0.0.0.0:8080 --timeout 600 --workers 1 --threads 4 --log-level debug app:app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - shrine_network
+    restart: unless-stopped
+
+networks:
+  shrine_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

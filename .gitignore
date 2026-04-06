@@ -1,0 +1,9 @@
+﻿.env
+backend/.env
+backend/app.yaml
+backend/app.yaml.template
+__pycache__/
+*.pyc
+data/
+*.log
+.cache/

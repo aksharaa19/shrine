@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: shrine
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: |
+      cd backend
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend
+      gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 4
+    envVars:
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: USE_INFERENCE_API
+        value: "true"
+      - key: DB_HOST
+        fromDatabase:
+          name: shrine-db
+          property: host
+      - key: DB_NAME
+        fromDatabase:
+          name: shrine-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: shrine-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: shrine-db
+          property: password
+      - key: DB_PORT
+        value: "5432"
+      - key: REDIS_URL
+        fromService:
+          name: shrine-redis
+          type: redis
+          property: connectionString
+    healthCheckPath: /health
+
+  - type: redis
+    name: shrine-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: shrine-db
+    plan: free
+    databaseName: shrine_db
+    user: shrine_user
