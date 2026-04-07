@@ -18,8 +18,15 @@ from logging_config import logger
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='../frontend', static_url_path='')
+app = Flask(__name__)
 CORS(app)
+
+# Get absolute paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(BASE_DIR, '../frontend')
+
+print(f"Frontend directory: {FRONTEND_DIR}")
+print(f"Files in frontend: {os.listdir(FRONTEND_DIR) if os.path.exists(FRONTEND_DIR) else 'NOT FOUND'}")
 
 youtube = YouTubeClient()
 
@@ -43,18 +50,28 @@ def update_metrics(response):
     ACTIVE_MONITORS.set(len(active_monitors))
     return response
 
+# Static file routes
 @app.route('/')
 def serve_index():
-    return send_from_directory('../frontend', 'index.html')
+    return send_from_directory(FRONTEND_DIR, 'index.html')
 
 @app.route('/dashboard')
 def serve_dashboard():
-    return send_from_directory('../frontend', 'dashboard.html')
+    return send_from_directory(FRONTEND_DIR, 'dashboard.html')
+
+@app.route('/dashboard.js')
+def serve_dashboard_js():
+    return send_from_directory(FRONTEND_DIR, 'dashboard.js')
+
+@app.route('/style.css')
+def serve_style_css():
+    return send_from_directory(FRONTEND_DIR, 'style.css')
 
 @app.route('/<path:path>')
 def serve_static(path):
-    return send_from_directory('../frontend', path)
+    return send_from_directory(FRONTEND_DIR, path)
 
+# API routes
 @app.route('/api/health')
 def health_check():
     return jsonify({
@@ -110,10 +127,6 @@ def analyze_comments():
         return jsonify({'error': 'No comments provided'}), 400
     analyzed_comments = sentiment_analyzer.analyze_batch(comments)
     stats = sentiment_analyzer.get_summary_stats(analyzed_comments)
-    
-    for comment in analyzed_comments:
-        TOXICITY_SCORE.labels(video_id='posted_video').set(comment['toxicity']['toxic_score'])
-    
     return jsonify({'stats': stats, 'analyzed_comments': analyzed_comments})
 
 @app.route('/api/live/start', methods=['POST'])
@@ -150,10 +163,6 @@ def get_live_status():
     status = monitor.get_status()
     attack_status = monitor.sliding_window.detect_coordinated_attack()
     status['attack_detection'] = attack_status
-    
-    TOXICITY_SCORE.labels(video_id=video_id).set(status['current_toxicity'])
-    ATTACK_SCORE.labels(video_id=video_id).set(attack_status.get('attack_score', 0))
-    
     return jsonify(status)
 
 @app.route('/api/live/stop', methods=['POST'])
