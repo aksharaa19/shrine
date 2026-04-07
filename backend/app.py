@@ -13,7 +13,7 @@ from live_stream_monitor import LiveStreamMonitor
 from reports.report_generator import ReportGenerator
 from auth import UserAuth
 from sentiment.analyzer import SentimentAnalyzer
-from visualization.charts import ChartDataGenerator   # <-- ADD THIS
+from visualization.charts import ChartDataGenerator
 
 load_dotenv()
 
@@ -30,7 +30,7 @@ sentiment_analyzer = SentimentAnalyzer()
 active_monitors = {}
 report_generator = ReportGenerator()
 user_auth = UserAuth()
-chart_gen = ChartDataGenerator()   # <-- ADD THIS
+chart_gen = ChartDataGenerator()
 
 # -------------------- Static Routes --------------------
 @app.route('/')
@@ -174,37 +174,47 @@ def generate_report():
 
 @app.route('/api/report/export/json', methods=['POST'])
 def export_json():
-    data = request.json
-    vid = data.get('video_id')
-    if vid not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    monitor = active_monitors[vid]
-    details = youtube.get_video_details(vid)
-    title = details['title'] if details else 'Unknown'
-    report = report_generator.generate_containment_report(
-        vid, title, monitor.sliding_window,
-        monitor.sliding_window.attack_detector,
-        monitor.sliding_window.alert_engine,
-        monitor.comment_count
-    )
-    return jsonify({'success': True, 'report_json': report_generator.export_to_json(report)})
+    try:
+        data = request.json
+        vid = data.get('video_id')
+        if vid not in active_monitors:
+            return jsonify({'success': False, 'error': 'Not monitoring this stream'}), 400
+        
+        monitor = active_monitors[vid]
+        details = youtube.get_video_details(vid)
+        title = details['title'] if details else 'Unknown'
+        report = report_generator.generate_containment_report(
+            vid, title, monitor.sliding_window,
+            monitor.sliding_window.attack_detector,
+            monitor.sliding_window.alert_engine,
+            monitor.comment_count
+        )
+        json_output = report_generator.export_to_json(report)
+        return jsonify({'success': True, 'report_json': json_output})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/report/export/csv', methods=['POST'])
 def export_csv():
-    data = request.json
-    vid = data.get('video_id')
-    if vid not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    monitor = active_monitors[vid]
-    details = youtube.get_video_details(vid)
-    title = details['title'] if details else 'Unknown'
-    report = report_generator.generate_containment_report(
-        vid, title, monitor.sliding_window,
-        monitor.sliding_window.attack_detector,
-        monitor.sliding_window.alert_engine,
-        monitor.comment_count
-    )
-    return jsonify({'success': True, 'csv': report_generator.export_to_csv(report)})
+    try:
+        data = request.json
+        vid = data.get('video_id')
+        if vid not in active_monitors:
+            return jsonify({'success': False, 'error': 'Not monitoring this stream'}), 400
+        
+        monitor = active_monitors[vid]
+        details = youtube.get_video_details(vid)
+        title = details['title'] if details else 'Unknown'
+        report = report_generator.generate_containment_report(
+            vid, title, monitor.sliding_window,
+            monitor.sliding_window.attack_detector,
+            monitor.sliding_window.alert_engine,
+            monitor.comment_count
+        )
+        csv_output = report_generator.export_to_csv(report)
+        return jsonify({'success': True, 'csv': csv_output})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
@@ -242,7 +252,7 @@ def get_history():
     history = user_auth.get_user_monitoring_history(session['username'])
     return jsonify({'history': history})
 
-# -------------------- Chart Endpoints (FIX 405) --------------------
+# -------------------- Chart Endpoints --------------------
 @app.route('/api/charts/toxicity', methods=['POST'])
 def chart_toxicity():
     data = request.json
