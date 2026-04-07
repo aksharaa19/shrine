@@ -53,29 +53,35 @@ def serve_style_css():
 def serve_static(path):
     return send_from_directory(FRONTEND_DIR, path)
 
-# -------------------- API Routes --------------------
+# -------------------- Health --------------------
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'healthy', 'active_monitors': len(active_monitors)})
 
+# -------------------- Posted Video Routes --------------------
 @app.route('/api/video', methods=['POST'])
 def get_video():
     data = request.json
     url = data.get('url')
     if not url:
-        return jsonify({'error': 'No URL'}), 400
+        return jsonify({'error': 'No URL provided'}), 400
     vid = youtube.extract_video_id(url)
     details = youtube.get_video_details(vid)
     if not details:
         return jsonify({'error': 'Video not found'}), 404
-    return jsonify({'video_id': vid, 'title': details['title'], 'channel': details['channel'], 'published_at': details['published_at']})
+    return jsonify({
+        'video_id': vid, 
+        'title': details['title'], 
+        'channel': details['channel'], 
+        'published_at': details['published_at']
+    })
 
 @app.route('/api/comments', methods=['POST'])
 def get_comments():
     data = request.json
     url = data.get('url')
     if not url:
-        return jsonify({'error': 'No URL'}), 400
+        return jsonify({'error': 'No URL provided'}), 400
     vid = youtube.extract_video_id(url)
     details = youtube.get_video_details(vid)
     comments = youtube.get_comments(vid, data.get('limit', 100))
@@ -91,17 +97,18 @@ def analyze():
     data = request.json
     comments = data.get('comments', [])
     if not comments:
-        return jsonify({'error': 'No comments'}), 400
+        return jsonify({'error': 'No comments provided'}), 400
     analyzed = sentiment_analyzer.analyze_batch(comments)
     stats = sentiment_analyzer.get_summary_stats(analyzed)
     return jsonify({'stats': stats, 'analyzed_comments': analyzed})
 
+# -------------------- Live Stream Routes --------------------
 @app.route('/api/live/start', methods=['POST'])
 def start_live():
     data = request.json
     url = data.get('url')
     if not url:
-        return jsonify({'error': 'No URL'}), 400
+        return jsonify({'error': 'No URL provided'}), 400
     vid = youtube.extract_video_id(url)
     if not youtube.is_live_stream(vid):
         return jsonify({'error': 'Not a live stream'}), 400
@@ -114,6 +121,7 @@ def start_live():
     monitor = LiveStreamMonitor(vid, chat_id, youtube, sentiment_analyzer, sw)
     monitor.start()
     active_monitors[vid] = monitor
+    print(f"Started monitoring {vid}")
     return jsonify({'status': 'monitoring', 'video_id': vid})
 
 @app.route('/api/live/status', methods=['POST'])
@@ -134,6 +142,7 @@ def stop_live():
     if vid in active_monitors:
         active_monitors[vid].stop()
         del active_monitors[vid]
+        print(f"Stopped monitoring {vid}")
         return jsonify({'status': 'stopped'})
     return jsonify({'error': 'Not monitoring'}), 400
 
@@ -155,29 +164,42 @@ def recommendations():
     alert = active_monitors[vid].sliding_window.generate_full_alert()
     return jsonify({'recommendations': alert['recommendations']})
 
+# -------------------- Report Routes --------------------
 @app.route('/api/report/generate', methods=['POST'])
 def generate_report():
-    data = request.json
-    vid = data.get('video_id')
-    if vid not in active_monitors:
-        return jsonify({'error': 'Not monitoring'}), 400
-    monitor = active_monitors[vid]
-    details = youtube.get_video_details(vid)
-    title = details['title'] if details else 'Unknown'
-    report = report_generator.generate_containment_report(
-        vid, title, monitor.sliding_window,
-        monitor.sliding_window.attack_detector,
-        monitor.sliding_window.alert_engine,
-        monitor.comment_count
-    )
-    return jsonify(report)
+    try:
+        data = request.json
+        vid = data.get('video_id')
+        print(f"Generate report called for video_id: {vid}")
+        
+        if not vid:
+            return jsonify({'error': 'No video_id provided'}), 400
+        
+        if vid not in active_monitors:
+            return jsonify({'error': f'Not monitoring video {vid}'}), 400
+        
+        monitor = active_monitors[vid]
+        details = youtube.get_video_details(vid)
+        title = details['title'] if details else 'Unknown'
+        
+        report = report_generator.generate_containment_report(
+            vid, title, monitor.sliding_window,
+            monitor.sliding_window.attack_detector,
+            monitor.sliding_window.alert_engine,
+            monitor.comment_count
+        )
+        print(f"Report generated successfully: {report.get('report_id')}")
+        return jsonify(report)
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/report/export/json', methods=['POST'])
 def export_json():
     try:
         data = request.json
         vid = data.get('video_id')
-        if vid not in active_monitors:
+        if not vid or vid not in active_monitors:
             return jsonify({'success': False, 'error': 'Not monitoring this stream'}), 400
         
         monitor = active_monitors[vid]
@@ -199,7 +221,7 @@ def export_csv():
     try:
         data = request.json
         vid = data.get('video_id')
-        if vid not in active_monitors:
+        if not vid or vid not in active_monitors:
             return jsonify({'success': False, 'error': 'Not monitoring this stream'}), 400
         
         monitor = active_monitors[vid]
@@ -216,17 +238,22 @@ def export_csv():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# -------------------- Auth Routes --------------------
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.json
     result = user_auth.register(data.get('username'), data.get('password'), data.get('email'))
-    return jsonify(result) if result['success'] else (jsonify({'error': result['error']}), 400)
+    if result['success']:
+        return jsonify(result)
+    return jsonify({'error': result['error']}), 400
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.json
     result = user_auth.login(data.get('username'), data.get('password'))
-    return jsonify(result) if result['success'] else (jsonify({'error': result['error']}), 401)
+    if result['success']:
+        return jsonify(result)
+    return jsonify({'error': result['error']}), 401
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
@@ -234,6 +261,7 @@ def logout():
     result = user_auth.logout(data.get('token'))
     return jsonify(result)
 
+# -------------------- History Routes --------------------
 @app.route('/api/history/save', methods=['POST'])
 def save_history():
     data = request.json
