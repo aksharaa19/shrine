@@ -13,7 +13,6 @@ from live_stream_monitor import LiveStreamMonitor
 from reports.report_generator import ReportGenerator
 from auth import UserAuth
 from sentiment.analyzer import SentimentAnalyzer
-from monitoring import monitor_metrics, ACTIVE_MONITORS, TOXICITY_SCORE, ATTACK_SCORE
 from logging_config import logger
 
 load_dotenv()
@@ -26,7 +25,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, '../frontend')
 
 print(f"Frontend directory: {FRONTEND_DIR}")
-print(f"Files in frontend: {os.listdir(FRONTEND_DIR) if os.path.exists(FRONTEND_DIR) else 'NOT FOUND'}")
 
 youtube = YouTubeClient()
 
@@ -44,11 +42,6 @@ def log_request():
                 method=request.method, 
                 path=request.path,
                 ip=request.remote_addr)
-
-@app.after_request
-def update_metrics(response):
-    ACTIVE_MONITORS.set(len(active_monitors))
-    return response
 
 # Static file routes
 @app.route('/')
@@ -82,7 +75,6 @@ def health_check():
     })
 
 @app.route('/api/video', methods=['POST'])
-@monitor_metrics
 def get_video_details():
     data = request.json
     url = data.get('url')
@@ -100,7 +92,6 @@ def get_video_details():
     })
 
 @app.route('/api/comments', methods=['POST'])
-@monitor_metrics
 def get_comments():
     data = request.json
     url = data.get('url')
@@ -119,7 +110,6 @@ def get_comments():
     })
 
 @app.route('/api/analyze', methods=['POST'])
-@monitor_metrics
 def analyze_comments():
     data = request.json
     comments = data.get('comments', [])
@@ -130,7 +120,6 @@ def analyze_comments():
     return jsonify({'stats': stats, 'analyzed_comments': analyzed_comments})
 
 @app.route('/api/live/start', methods=['POST'])
-@monitor_metrics
 def start_live_monitoring():
     data = request.json
     url = data.get('url')
@@ -153,7 +142,6 @@ def start_live_monitoring():
     return jsonify({'status': 'monitoring', 'video_id': video_id})
 
 @app.route('/api/live/status', methods=['POST'])
-@monitor_metrics
 def get_live_status():
     data = request.json
     video_id = data.get('video_id')
@@ -166,7 +154,6 @@ def get_live_status():
     return jsonify(status)
 
 @app.route('/api/live/stop', methods=['POST'])
-@monitor_metrics
 def stop_live_monitoring():
     data = request.json
     video_id = data.get('video_id')
@@ -179,7 +166,6 @@ def stop_live_monitoring():
     return jsonify({'error': 'Not monitoring this stream'}), 400
 
 @app.route('/api/live/alert', methods=['POST'])
-@monitor_metrics
 def get_live_alert():
     data = request.json
     video_id = data.get('video_id')
@@ -190,7 +176,6 @@ def get_live_alert():
     return jsonify(alert)
 
 @app.route('/api/recommendations', methods=['POST'])
-@monitor_metrics
 def get_recommendations():
     data = request.json
     video_id = data.get('video_id')
@@ -201,7 +186,6 @@ def get_recommendations():
     return jsonify({'video_id': video_id, 'recommendations': alert['recommendations']})
 
 @app.route('/api/report/generate', methods=['POST'])
-@monitor_metrics
 def generate_report():
     data = request.json
     video_id = data.get('video_id')
@@ -220,7 +204,6 @@ def generate_report():
     return jsonify(report)
 
 @app.route('/api/report/export/json', methods=['POST'])
-@monitor_metrics
 def export_report_json():
     data = request.json
     video_id = data.get('video_id')
@@ -240,7 +223,6 @@ def export_report_json():
     return jsonify({'success': True, 'report_json': json_output})
 
 @app.route('/api/report/export/csv', methods=['POST'])
-@monitor_metrics
 def export_report_csv():
     data = request.json
     video_id = data.get('video_id')
@@ -260,7 +242,6 @@ def export_report_csv():
     return jsonify({'success': True, 'csv': csv_output})
 
 @app.route('/api/auth/register', methods=['POST'])
-@monitor_metrics
 def register():
     data = request.json
     result = user_auth.register(data.get('username'), data.get('password'), data.get('email'))
@@ -270,7 +251,6 @@ def register():
     return jsonify({'error': result['error']}), 400
 
 @app.route('/api/auth/login', methods=['POST'])
-@monitor_metrics
 def login():
     data = request.json
     result = user_auth.login(data.get('username'), data.get('password'))
@@ -280,14 +260,12 @@ def login():
     return jsonify({'error': result['error']}), 401
 
 @app.route('/api/auth/logout', methods=['POST'])
-@monitor_metrics
 def logout():
     data = request.json
     result = user_auth.logout(data.get('token'))
     return jsonify(result)
 
 @app.route('/api/history/save', methods=['POST'])
-@monitor_metrics
 def save_history():
     data = request.json
     session = user_auth.verify_session(data.get('token'))
@@ -297,7 +275,6 @@ def save_history():
     return jsonify({'success': True})
 
 @app.route('/api/history/get', methods=['POST'])
-@monitor_metrics
 def get_history():
     data = request.json
     session = user_auth.verify_session(data.get('token'))
@@ -305,12 +282,6 @@ def get_history():
         return jsonify({'error': 'Invalid session'}), 401
     history = user_auth.get_user_monitoring_history(session['username'])
     return jsonify({'history': history})
-
-@app.route('/metrics')
-def metrics():
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    from flask import Response
-    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=False)
