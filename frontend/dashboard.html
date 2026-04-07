@@ -97,7 +97,7 @@
         <div class="tabs"><button class="tab-btn active" onclick="switchTab('posted')">Posted Videos</button><button class="tab-btn" onclick="switchTab('live')">Live Streams</button><button class="tab-btn" onclick="switchTab('history')">History</button></div>
         <div id="postedTab" class="tab-content active">
             <div class="card">
-                <div class="input-group"><input type="text" id="videoUrl" placeholder="Enter YouTube Video URL"><button class="btn btn-primary" onclick="analyzeVideo()">Analyze</button><button class="btn btn-secondary" id="fetchBtn" onclick="fetchVideoComments()" disabled>Fetch Comments</button><button class="btn btn-secondary" id="sentimentBtn" onclick="analyzeSentiment()" disabled>Analyze Sentiment</button></div>
+                <div class="input-group"><input type="text" id="videoUrl" placeholder="Enter YouTube Video URL"><button class="btn btn-primary" onclick="analyzeVideo()">Analyze</button><button class="btn btn-secondary" id="fetchBtn" onclick="fetchComments()" disabled>Fetch Comments</button><button class="btn btn-secondary" id="sentimentBtn" onclick="analyzeSentiment()" disabled>Analyze Sentiment</button></div>
                 <div id="videoInfo" class="video-info"></div>
                 <div id="statsSection" style="display:none;"><div class="stats-grid" id="statsGrid"></div><div class="progress-container"><div class="progress-bar" id="toxicityProgress"></div></div></div>
                 <div id="results" class="results"></div>
@@ -106,7 +106,7 @@
         </div>
         <div id="liveTab" class="tab-content">
             <div class="card">
-                <div class="input-group"><input type="text" id="liveVideoUrl" placeholder="Enter YouTube Live Stream URL"><button class="btn btn-primary" onclick="startLiveMonitoring()">Start Monitoring</button><button class="btn btn-secondary" id="stopLiveBtn" onclick="stopLiveMonitoring()" disabled>Stop</button></div>
+                <div class="input-group"><input type="text" id="liveVideoUrl" placeholder="Enter YouTube Live Stream URL"><button class="btn btn-primary" onclick="startLive()">Start Monitoring</button><button class="btn btn-secondary" id="stopLiveBtn" onclick="stopLive()" disabled>Stop</button></div>
                 <div class="charts-grid"><div class="chart-card"><h4>Toxicity Trend</h4><canvas id="toxicityChart"></canvas></div><div class="chart-card"><h4>Attack Score Trend</h4><canvas id="attackChart"></canvas></div><div class="chart-card"><h4>Velocity and Acceleration</h4><canvas id="velocityChart"></canvas></div><div class="chart-card"><h4>Current Toxicity</h4><canvas id="gaugeChart"></canvas></div></div>
                 <div id="liveStatus" class="live-status"></div>
                 <div id="liveAlert" class="live-alert"></div>
