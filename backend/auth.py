@@ -18,12 +18,6 @@ class UserAuth:
     def _ensure_users_file(self):
         if not os.path.exists(self.users_file):
             default_users = {
-                "admin": {
-                    "password": self._hash_password("admin123"),
-                    "email": "admin@shrine.com",
-                    "created_at": datetime.now().isoformat(),
-                    "role": "admin"
-                },
                 "demo": {
                     "password": self._hash_password("demo123"),
                     "email": "demo@shrine.com",
@@ -63,47 +57,33 @@ class UserAuth:
     
     def register(self, username, password, email):
         users = self._load_users()
-        
         if username in users:
             return {'success': False, 'error': 'Username already exists'}
-        
         users[username] = {
             'password': self._hash_password(password),
             'email': email,
             'created_at': datetime.now().isoformat(),
             'role': 'user'
         }
-        
         self._save_users(users)
         return {'success': True, 'message': 'User registered successfully'}
     
     def login(self, username, password):
         users = self._load_users()
-        
         if username not in users:
             return {'success': False, 'error': 'Invalid username or password'}
-        
         if not self._verify_password(password, users[username]['password']):
             return {'success': False, 'error': 'Invalid username or password'}
-        
         session_token = secrets.token_hex(32)
         sessions = self._load_sessions()
-        
         sessions[session_token] = {
             'username': username,
             'created_at': datetime.now().isoformat(),
             'expires_at': (datetime.now() + timedelta(hours=24)).isoformat(),
             'role': users[username]['role']
         }
-        
         self._save_sessions(sessions)
-        
-        return {
-            'success': True,
-            'token': session_token,
-            'username': username,
-            'role': users[username]['role']
-        }
+        return {'success': True, 'token': session_token, 'username': username, 'role': users[username]['role']}
     
     def logout(self, token):
         sessions = self._load_sessions()
@@ -114,23 +94,15 @@ class UserAuth:
     
     def verify_session(self, token):
         sessions = self._load_sessions()
-        
         if token not in sessions:
             return {'success': False, 'error': 'Invalid session'}
-        
         session = sessions[token]
         expires_at = datetime.fromisoformat(session['expires_at'])
-        
         if expires_at < datetime.now():
             del sessions[token]
             self._save_sessions(sessions)
             return {'success': False, 'error': 'Session expired'}
-        
-        return {
-            'success': True,
-            'username': session['username'],
-            'role': session['role']
-        }
+        return {'success': True, 'username': session['username'], 'role': session['role']}
     
     def get_user_monitoring_history(self, username):
         history_file = f'data/history_{username}.json'
@@ -142,16 +114,13 @@ class UserAuth:
     def save_monitoring_session(self, username, video_id, video_title, report_data):
         history_file = f'data/history_{username}.json'
         history = self.get_user_monitoring_history(username)
-        
         history.append({
             'timestamp': datetime.now().isoformat(),
             'video_id': video_id,
             'video_title': video_title,
             'report': report_data
         })
-        
         if len(history) > 50:
             history = history[-50:]
-        
         with open(history_file, 'w') as f:
             json.dump(history, f, indent=2)

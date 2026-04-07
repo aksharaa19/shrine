@@ -21,66 +21,52 @@ class YouTubeClient:
     def get_video_details(self, video_id):
         url = f"{self.base_url}/videos"
         params = {'part': 'snippet', 'id': video_id, 'key': self.api_key}
-        
         try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            resp = requests.get(url, params=params, timeout=30)
+            data = resp.json()
             if data.get('items'):
-                snippet = data['items'][0]['snippet']
-                return {
-                    'title': snippet.get('title', 'Unknown'),
-                    'channel': snippet.get('channelTitle', 'Unknown'),
-                    'published_at': snippet.get('publishedAt', 'Unknown')
-                }
+                s = data['items'][0]['snippet']
+                return {'title': s.get('title', 'Unknown'), 'channel': s.get('channelTitle', 'Unknown'), 'published_at': s.get('publishedAt', 'Unknown')}
             return None
         except Exception as e:
-            print(f"Error fetching video details: {e}")
+            print(f"Video error: {e}")
             return None
     
     def get_comments(self, video_id, max_results=100):
         comments = []
         url = f"{self.base_url}/commentThreads"
-        params = {
-            'part': 'snippet',
-            'videoId': video_id,
-            'maxResults': min(max_results, 100),
-            'key': self.api_key,
-            'order': 'relevance'
-        }
-        
+        params = {'part': 'snippet', 'videoId': video_id, 'maxResults': min(max_results,100), 'key': self.api_key, 'order': 'relevance'}
         try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            resp = requests.get(url, params=params, timeout=30)
+            data = resp.json()
             if 'error' in data:
-                print(f"API Error: {data['error']}")
                 return []
             for item in data.get('items', []):
-                snippet = item['snippet']['topLevelComment']['snippet']
+                s = item['snippet']['topLevelComment']['snippet']
                 comments.append({
                     'id': item['id'],
-                    'text': snippet['textDisplay'],
-                    'author': snippet['authorDisplayName'],
-                    'likes': snippet['likeCount'],
-                    'timestamp': snippet['publishedAt']
+                    'text': s['textDisplay'],
+                    'author': s['authorDisplayName'],
+                    'likes': s['likeCount'],
+                    'timestamp': s['publishedAt']
                 })
             return comments
         except Exception as e:
-            print(f"Error fetching comments: {e}")
+            print(f"Comments error: {e}")
             return []
     
     def get_live_chat_id(self, video_id):
         url = f"{self.base_url}/videos"
         params = {'part': 'liveStreamingDetails', 'id': video_id, 'key': self.api_key}
-        
         try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            resp = requests.get(url, params=params, timeout=30)
+            data = resp.json()
             if data.get('items'):
                 details = data['items'][0].get('liveStreamingDetails', {})
                 return details.get('activeLiveChatId')
             return None
         except Exception as e:
-            print(f"Error getting live chat ID: {e}")
+            print(f"Live chat ID error: {e}")
             return None
 
     def get_live_chat_messages(self, live_chat_id, page_token=None):
@@ -88,12 +74,10 @@ class YouTubeClient:
         params = {'part': 'snippet,authorDetails', 'liveChatId': live_chat_id, 'key': self.api_key}
         if page_token:
             params['pageToken'] = page_token
-        
         try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            resp = requests.get(url, params=params, timeout=30)
+            data = resp.json()
             if 'error' in data:
-                print(f"API Error: {data['error']}")
                 return [], None
             messages = []
             for item in data.get('items', []):
@@ -106,20 +90,19 @@ class YouTubeClient:
                 })
             return messages, data.get('nextPageToken')
         except Exception as e:
-            print(f"Error fetching live chat: {e}")
+            print(f"Live chat messages error: {e}")
             return [], None
 
     def is_live_stream(self, video_id):
         url = f"{self.base_url}/videos"
         params = {'part': 'liveStreamingDetails', 'id': video_id, 'key': self.api_key}
-        
         try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            resp = requests.get(url, params=params, timeout=30)
+            data = resp.json()
             if data.get('items'):
                 details = data['items'][0].get('liveStreamingDetails', {})
                 return details.get('actualStartTime') is not None
             return False
         except Exception as e:
-            print(f"Error checking live status: {e}")
+            print(f"Live check error: {e}")
             return False

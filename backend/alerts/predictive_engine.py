@@ -5,169 +5,86 @@ class PredictiveAlertEngine:
     def __init__(self):
         self.alert_history = deque(maxlen=100)
         self.confidence_threshold = 0.6
-        
-    def predict_escalation(self, sliding_window_analyzer, attack_detection_dict):
-        current_toxicity = sliding_window_analyzer.get_window_average(30)
-        velocity_30 = sliding_window_analyzer.get_window_velocity(30)
-        acceleration = sliding_window_analyzer.get_acceleration()
-        
-        attack_score = 0
-        if attack_detection_dict and isinstance(attack_detection_dict, dict):
-            attack_score = attack_detection_dict.get('attack_score', 0)
-        
-        prediction_score = 0.0
-        time_to_escalation = None
-        confidence = 0.0
-        
-        if current_toxicity > 0.3 and acceleration > 0.05:
-            prediction_score += 0.4
-            time_to_escalation = 90
-        elif current_toxicity > 0.2 and acceleration > 0.03:
-            prediction_score += 0.2
-            time_to_escalation = 120
-        
-        if velocity_30 > 0.1:
-            prediction_score += 0.3
-            if time_to_escalation:
-                time_to_escalation = max(30, time_to_escalation - 30)
-        
+    
+    def predict_escalation(self, sliding_window, attack_dict):
+        cur = sliding_window.get_window_average(30)
+        vel = sliding_window.get_window_velocity(30)
+        acc = sliding_window.get_acceleration()
+        attack_score = attack_dict.get('attack_score', 0) if attack_dict else 0
+        score = 0.0
+        time_to = None
+        if cur > 0.3 and acc > 0.05:
+            score += 0.4
+            time_to = 90
+        elif cur > 0.2 and acc > 0.03:
+            score += 0.2
+            time_to = 120
+        if vel > 0.1:
+            score += 0.3
+            if time_to:
+                time_to = max(30, time_to-30)
         if attack_score > 0.5:
-            prediction_score += 0.3
-            if time_to_escalation:
-                time_to_escalation = max(15, time_to_escalation - 45)
-        
-        prediction_score = min(1.0, prediction_score)
-        
-        if prediction_score > 0.3:
-            confidence = min(0.9, 0.5 + (prediction_score * 0.4))
-        
-        is_escalation_predicted = prediction_score > self.confidence_threshold
-        
+            score += 0.3
+            if time_to:
+                time_to = max(15, time_to-45)
+        score = min(1.0, score)
+        confidence = min(0.9, 0.5 + score*0.4) if score > 0.3 else 0.0
         return {
-            'is_escalation_predicted': is_escalation_predicted,
-            'prediction_score': round(prediction_score, 3),
-            'confidence': round(confidence, 3),
-            'time_to_escalation_seconds': time_to_escalation,
-            'time_to_escalation_text': self._format_time(time_to_escalation),
-            'factors': {
-                'current_toxicity': round(current_toxicity, 3),
-                'velocity_30': round(velocity_30, 3),
-                'acceleration': round(acceleration, 3),
-                'attack_score': round(attack_score, 3)
-            }
+            'is_escalation_predicted': score > self.confidence_threshold,
+            'prediction_score': round(score,3),
+            'confidence': round(confidence,3),
+            'time_to_escalation_seconds': time_to,
+            'time_to_escalation_text': self._format_time(time_to),
+            'factors': {'current_toxicity': round(cur,3), 'velocity_30': round(vel,3), 'acceleration': round(acc,3), 'attack_score': round(attack_score,3)}
         }
     
-    def _format_time(self, seconds):
-        if not seconds:
+    def _format_time(self, sec):
+        if not sec:
             return 'Unknown'
-        if seconds < 60:
-            return f'{seconds} seconds'
-        minutes = seconds // 60
-        remaining = seconds % 60
-        if remaining == 0:
-            return f'{minutes} minute(s)'
-        return f'{minutes} minute(s) {remaining} second(s)'
+        if sec < 60:
+            return f'{sec} seconds'
+        m = sec // 60
+        s = sec % 60
+        return f'{m} minute(s) {s} second(s)' if s else f'{m} minute(s)'
     
-    def generate_alert(self, prediction, attack_detection_dict, toxicity_alert):
+    def generate_alert(self, prediction, attack_dict, tox_alert):
         alert_id = datetime.now().strftime('%Y%m%d%H%M%S%f')
-        timestamp = datetime.now().isoformat()
-        
-        severity = 'low'
-        if prediction['is_escalation_predicted']:
-            severity = 'high'
-        elif toxicity_alert.get('alert_triggered', False):
-            severity = 'medium'
-        
+        severity = 'high' if prediction['is_escalation_predicted'] else ('medium' if tox_alert.get('alert_triggered', False) else 'low')
         alert = {
             'id': alert_id,
-            'timestamp': timestamp,
+            'timestamp': datetime.now().isoformat(),
             'severity': severity,
             'prediction': prediction,
-            'toxicity_alert': toxicity_alert,
-            'attack_detected': attack_detection_dict.get('is_attack', False) if attack_detection_dict else False,
-            'recommendations': self.get_recommendations(prediction, toxicity_alert, attack_detection_dict)
+            'toxicity_alert': tox_alert,
+            'attack_detected': attack_dict.get('is_attack', False) if attack_dict else False,
+            'recommendations': self.get_recommendations(prediction, tox_alert, attack_dict)
         }
-        
         self.alert_history.append(alert)
         return alert
     
-    def get_recommendations(self, prediction, toxicity_alert, attack_detection_dict):
-        recommendations = []
-        
+    def get_recommendations(self, prediction, tox_alert, attack_dict):
+        recs = []
         if prediction['is_escalation_predicted']:
-            recommendations.append({
-                'priority': 'critical',
-                'action': 'Enable comment moderation filters',
-                'description': 'Activate YouTube built-in moderation tools to hold potentially toxic comments.',
-                'timeframe': 'immediate'
-            })
-            recommendations.append({
-                'priority': 'critical',
-                'action': 'Pin a clarifying comment',
-                'description': 'Post a pinned comment addressing the controversy.',
-                'timeframe': 'within 1 minute'
-            })
-        
-        if toxicity_alert.get('alert_triggered', False):
-            if toxicity_alert.get('alert_level') == 'critical':
-                recommendations.append({
-                    'priority': 'high',
-                    'action': 'Prepare holding statement',
-                    'description': 'Draft a response acknowledging viewer concerns.',
-                    'timeframe': 'immediate'
-                })
-            recommendations.append({
-                'priority': 'medium',
-                'action': 'Increase moderation staff',
-                'description': 'Assign additional team members to monitor comments.',
-                'timeframe': 'within 5 minutes'
-            })
-        
-        if attack_detection_dict and attack_detection_dict.get('is_attack', False):
-            recommendations.append({
-                'priority': 'high',
-                'action': 'Enable comment hold',
-                'description': 'Temporarily hold all comments for review.',
-                'timeframe': 'immediate'
-            })
-            recommendations.append({
-                'priority': 'high',
-                'action': 'Report coordinated attack to YouTube',
-                'description': 'Use YouTube harassment reporting tools.',
-                'timeframe': 'within 2 minutes'
-            })
-        
-        if len(recommendations) == 0:
-            recommendations.append({
-                'priority': 'low',
-                'action': 'Continue monitoring',
-                'description': 'No immediate action required.',
-                'timeframe': 'ongoing'
-            })
-        
-        return recommendations
+            recs.append({'priority':'critical','action':'Enable comment moderation filters','description':'Activate YouTube moderation tools','timeframe':'immediate'})
+            recs.append({'priority':'critical','action':'Pin a clarifying comment','description':'Post a pinned comment addressing the controversy','timeframe':'within 1 minute'})
+        if tox_alert.get('alert_triggered', False):
+            if tox_alert.get('alert_level') == 'critical':
+                recs.append({'priority':'high','action':'Prepare holding statement','description':'Draft a response acknowledging concerns','timeframe':'immediate'})
+            recs.append({'priority':'medium','action':'Increase moderation staff','description':'Assign more team members to monitor','timeframe':'within 5 minutes'})
+        if attack_dict and attack_dict.get('is_attack', False):
+            recs.append({'priority':'high','action':'Enable comment hold','description':'Temporarily hold all comments for review','timeframe':'immediate'})
+            recs.append({'priority':'high','action':'Report coordinated attack to YouTube','description':'Use YouTube harassment reporting tools','timeframe':'within 2 minutes'})
+        if not recs:
+            recs.append({'priority':'low','action':'Continue monitoring','description':'No immediate action required','timeframe':'ongoing'})
+        return recs
     
     def get_alert_history(self, limit=20):
         return list(self.alert_history)[-limit:]
     
     def get_alert_summary(self):
         if not self.alert_history:
-            return {
-                'total_alerts': 0,
-                'high_severity_count': 0,
-                'medium_severity_count': 0,
-                'low_severity_count': 0,
-                'last_alert': None
-            }
-        
-        high_count = sum(1 for a in self.alert_history if a.get('severity') == 'high')
-        medium_count = sum(1 for a in self.alert_history if a.get('severity') == 'medium')
-        low_count = sum(1 for a in self.alert_history if a.get('severity') == 'low')
-        
-        return {
-            'total_alerts': len(self.alert_history),
-            'high_severity_count': high_count,
-            'medium_severity_count': medium_count,
-            'low_severity_count': low_count,
-            'last_alert': self.alert_history[-1].get('timestamp') if self.alert_history else None
-        }
+            return {'total_alerts':0, 'high_severity_count':0, 'medium_severity_count':0, 'low_severity_count':0, 'last_alert':None}
+        high = sum(1 for a in self.alert_history if a.get('severity')=='high')
+        med = sum(1 for a in self.alert_history if a.get('severity')=='medium')
+        low = sum(1 for a in self.alert_history if a.get('severity')=='low')
+        return {'total_alerts':len(self.alert_history), 'high_severity_count':high, 'medium_severity_count':med, 'low_severity_count':low, 'last_alert':self.alert_history[-1].get('timestamp')}

@@ -41,24 +41,19 @@ class LiveStreamMonitor:
                 time.sleep(self.poll_interval)
     
     def _poll_messages(self):
-        messages, next_token = self.youtube_client.get_live_chat_messages(
-            self.live_chat_id, self.page_token
-        )
-        
+        messages, next_token = self.youtube_client.get_live_chat_messages(self.live_chat_id, self.page_token)
         if messages:
-            for message in messages:
-                self._process_message(message)
+            for msg in messages:
+                self._process_message(msg)
             self.comment_count += len(messages)
             self.last_poll_time = datetime.now()
-        
         if next_token:
             self.page_token = next_token
     
     def _process_message(self, message):
         text = message.get('text', '')
-        if not text or len(text.strip()) == 0:
+        if not text.strip():
             return
-        
         toxicity = self.sentiment_analyzer.analyze(text)
         comment_data = {
             'id': message['id'],
@@ -67,7 +62,6 @@ class LiveStreamMonitor:
             'likes': 0,
             'timestamp': message['timestamp']
         }
-        
         self.sliding_window.add_comment(comment_data, toxicity['toxic_score'])
         alert = self.sliding_window.detect_acceleration_alert()
         if alert['alert_triggered']:
